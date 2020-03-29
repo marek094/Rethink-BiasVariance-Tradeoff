@@ -78,3 +78,15 @@ def get_subsample_dataset_label_noise(trainset, subset, noise_size):
     for idx in range(train_size - noise_size, train_size):
         trainsubset.targets[idx] = shuffle_targets_subset[idx - train_size + noise_size]
     return trainsubset
+
+def save_feature_space(model, dataloader, path):
+    import csv
+    with path.open('w') as f:
+        writer = csv.writer(f)
+        for batch_idx, (inputs, targets) in enumerate(dataloader):
+            feat_batch = model.to_feature_space(inputs)
+            for clss, feat in zip(targets, feat_batch):
+                writer.writerow([clss.tolist()] + feat.tolist())
+            print(f'Batch {batch_idx} saved.', end='\r')
+    print("Test epoch saved" + "--- " * 12)
+        

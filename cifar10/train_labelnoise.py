@@ -6,6 +6,8 @@ import torchvision
 import torchvision.transforms as transforms
 import torch.optim as optim
 from torch.optim.lr_scheduler import StepLR
+from pathlib import Path
+
 
 from utils import *
 from models.resnet import ResNet18, ResNet34, ResNet50
@@ -37,7 +39,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = args.gpuid
 ##################################################
 # setup log file
 ##################################################
-outdir = '{}_{}_trial{}_labelnoise{}_mse{}'.format(args.dataset, args.arch, args.trial, args.noise_size, args.outdir)
+outdir = '{}_{}_trial{}_labelnoise{}_mse_{}'.format(args.dataset, args.arch, args.trial, args.noise_size, args.outdir)
 if not os.path.exists(outdir):
     os.makedirs(outdir)
 logfilename = os.path.join(outdir, 'log_width{}.txt'.format(args.width))
@@ -60,13 +62,22 @@ trainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True
 testset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform_test)
 testloader = torch.utils.data.DataLoader(testset, batch_size=100, shuffle=False, num_workers=2)
 
-
 # loss definition
-criterion = nn.MSELoss(reduction='mean').cuda()
+if args.gpuid != "":
+    criterion = nn.MSELoss(reduction='mean').cuda()
+else:
+    criterion = nn.MSELoss(reduction='mean')
+
 # variables for bias-variance calculation
 NUM_CLASSES = 10
-OUTPUST_SUM = torch.Tensor(args.test_size, NUM_CLASSES).zero_().cuda()
-OUTPUTS_SUMNORMSQUARED = torch.Tensor(args.test_size).zero_().cuda()
+
+if args.gpuid != "":
+    OUTPUST_SUM = torch.Tensor(args.test_size, NUM_CLASSES).zero_().cuda()
+    OUTPUTS_SUMNORMSQUARED = torch.Tensor(args.test_size).zero_().cuda()
+else:
+    OUTPUST_SUM = torch.Tensor(args.test_size, NUM_CLASSES).zero_()
+    OUTPUTS_SUMNORMSQUARED = torch.Tensor(args.test_size).zero_()
+
 # train/test accuracy/loss
 TRAIN_ACC_SUM = 0.0
 TEST_ACC_SUM = 0.0
@@ -81,8 +92,11 @@ def train(net, trainloader):
     correct = 0
     total = 0
     for batch_idx, (inputs, targets) in enumerate(trainloader):
-        inputs, targets = inputs.cuda(), targets.cuda()
-        targets_onehot = torch.FloatTensor(targets.size(0), NUM_CLASSES).cuda()
+        if args.gpuid != "":
+            inputs, targets = inputs.cuda(), targets.cuda()
+            targets_onehot = torch.FloatTensor(targets.size(0), NUM_CLASSES).cuda()
+        else:
+            targets_onehot = torch.FloatTensor(targets.size(0), NUM_CLASSES)
         targets_onehot.zero_()
         targets_onehot.scatter_(1, targets.view(-1, 1).long(), 1)
         optimizer.zero_grad()
@@ -105,8 +119,11 @@ def test(net, testloader):
     total = 0
     with torch.no_grad():
         for batch_idx, (inputs, targets) in enumerate(testloader):
-            inputs, targets = inputs.cuda(), targets.cuda()
-            targets_onehot = torch.FloatTensor(targets.size(0), NUM_CLASSES).cuda()
+            if args.gpuid != "":
+                inputs, targets = inputs.cuda(), targets.cuda()
+                targets_onehot = torch.FloatTensor(targets.size(0), NUM_CLASSES).cuda()
+            else:
+                targets_onehot = torch.FloatTensor(targets.size(0), NUM_CLASSES)
             targets_onehot.zero_()
             targets_onehot.scatter_(1, targets.view(-1, 1).long(), 1)
             outputs = net(inputs)
@@ -154,36 +171,44 @@ for trial in range(args.trial):
     # set up model and optimizer
     ##########################################
     if args.arch == 'resnet18':
-        net = ResNet18(width=args.width).cuda()
+        net = ResNet18(width=args.width)
     elif args.arch == 'resnet34':
-        net = ResNet34(width=args.width).cuda()
+        net = ResNet34(width=args.width)
     elif args.arch == 'resnet50':
-        net = ResNet50(width=args.width).cuda()
+        net = ResNet50(width=args.width)
     elif args.arch == 'resnext':
-        net = ResNeXt29(width=args.width).cuda()
+        net = ResNeXt29(width=args.width)
     elif args.arch == 'resnext_1d':
-        net = ResNeXt29_1d(width=args.width).cuda()
+        net = ResNeXt29_1d(width=args.width)
     elif args.arch == 'vgg':
-        net = VGG11(width=args.width).cuda()
+        net = VGG11(width=args.width)
     elif args.arch == 'resnet26_bottle':
-        net = ResNet26_bottle(width=args.width).cuda()
+        net = ResNet26_bottle(width=args.width)
     elif args.arch == 'resnet38_bottle':
-        net = ResNet38_bottle(width=args.width).cuda()
+        net = ResNet38_bottle(width=args.width)
     elif args.arch == 'resnet50_bottle':
-        net = ResNet50_bottle(width=args.width).cuda()
+        net = ResNet50_bottle(width=args.width)
     else:
         print('no available arch')
         raise RuntimeError
+    
+    if args.gpuid != "":
+        net = net.cuda()
+
     optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=args.weight_decay)
     scheduler = StepLR(optimizer, step_size=args.lr_decay, gamma=0.1)
 
-    for epoch in range(1, args.num_epoch + 1):
-        train_loss, train_acc = train(net, trainloader)
-        test_loss, test_acc = test(net, testloader)
-        print('epoch: {}, train_loss: {:.6f}, train acc: {}, test loss: {:.6f}, test acc: {}'.format(epoch, train_loss, train_acc, test_loss, test_acc))
-        scheduler.step(epoch)
-        if epoch % args.save_freq == 0:
-            torch.save(net.state_dict(), os.path.join(outdir, 'model_width{}_trial{}_epoch{}.pkl'.format(args.width, trial, epoch)))
+    with open(Path(outdir) / 'training_log.txt', 'w') as f:    
+        for epoch in range(1, args.num_epoch + 1):
+            train_loss, train_acc = train(net, trainloader)
+            test_loss, test_acc = test(net, testloader)
+            save_feature_space(net, testloader, Path(outdir) / f"feature_space_{epoch}.csv")
+            line = 'epoch: {}, train_loss: {:.6f}, train acc: {}, test loss: {:.6f}, test acc: {}'.format(epoch, train_loss, train_acc, test_loss, test_acc)
+            print(line)
+            print(line, file=f, flush=True)
+            scheduler.step(epoch)
+            if epoch % args.save_freq == 0:
+                torch.save(net.state_dict(), os.path.join(outdir, 'model_width{}_trial{}_epoch{}.pkl'.format(args.width, trial, epoch)))
 
     TRAIN_LOSS_SUM += train_loss
     TEST_LOSS_SUM += test_loss
