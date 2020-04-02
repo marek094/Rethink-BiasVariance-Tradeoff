@@ -202,7 +202,7 @@ for trial in range(args.trial):
         for epoch in range(1, args.num_epoch + 1):
             train_loss, train_acc = train(net, trainloader)
             test_loss, test_acc = test(net, testloader)
-            save_feature_space(net, testloader, Path(outdir) / f"feature_space_{epoch}.csv", cuda=(args.gpuid!=""))
+            save_feature_space(net, testloader, Path(outdir) / f"feature_space_{epoch}.dat", cuda=(args.gpuid!=""))
             line = 'epoch: {}, train_loss: {:.6f}, train acc: {}, test loss: {:.6f}, test acc: {}'.format(epoch, train_loss, train_acc, test_loss, test_acc)
             print(line)
             print(line, file=f, flush=True)

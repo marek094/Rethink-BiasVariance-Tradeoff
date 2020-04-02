@@ -80,15 +80,20 @@ def get_subsample_dataset_label_noise(trainset, subset, noise_size):
     return trainsubset
 
 def save_feature_space(model, dataloader, path, cuda=True):
-    import csv
+    import struct
+    is_first = True
     with path.open('wb') as f:
-        writer = csv.writer(f)
         for batch_idx, (inputs, targets) in enumerate(dataloader):
             if cuda:
                 inputs, targets = inputs.cuda(), targets.cuda()
             feat_batch = model.to_feature_space(inputs)
             for clss, feat in zip(targets, feat_batch):
-                writer.writerow([clss.tolist()] + feat.tolist())
+                feat = feat.tolist()
+                if is_first:
+                    f.write(struct.pack('<i', len(feat)))
+                    is_first = False
+                f.write(struct.pack('<i', clss.tolist()))
+                f.write(struct.pack(f'<{len(feat)}f', *feat))
             print(f'Batch {batch_idx} saved.', end='\r')
     print("Test epoch saved" + "--- " * 12)
         
