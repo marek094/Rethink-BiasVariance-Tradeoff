@@ -195,7 +195,8 @@ for trial in range(args.trial):
     if args.gpuid != "":
         net = net.cuda()
 
-    optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=args.weight_decay)
+    # optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=args.weight_decay)
+    optimizer = optim.Adam(net.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     scheduler = StepLR(optimizer, step_size=args.lr_decay, gamma=0.1)
 
     with open(Path(outdir) / 'training_log.txt', 'w') as f:    
