@@ -81,7 +81,7 @@ def get_subsample_dataset_label_noise(trainset, subset, noise_size):
 
 def save_feature_space(model, dataloader, path, cuda=True):
     import csv
-    with path.open('w') as f:
+    with path.open('wb') as f:
         writer = csv.writer(f)
         for batch_idx, (inputs, targets) in enumerate(dataloader):
             if cuda:
