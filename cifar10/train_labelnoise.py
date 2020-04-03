@@ -174,9 +174,11 @@ if args.resume:
     p = re.compile(r'model_width(\d+)_trial(\d+)_epoch(\d+).pkl')
     
     found = []
-    for ckpt in op.glob('model_width_*.pkl'):
+    for ckpt in op.glob('model_width*.pkl'):
         res = p.search(ckpt.name)
+        print(ckpt.name)
         if res:
+            print('OK')
             width, trial, epoch = map(int, res.groups())
             if width == args.width:
                 found.append((trial, epoch, ckpt))
