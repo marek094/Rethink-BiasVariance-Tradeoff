@@ -31,6 +31,7 @@ parser.add_argument('--noise-size', default=1000, type=int, help='number of nois
 parser.add_argument('--test-size', default=10000, type=int, help='number of test points')
 parser.add_argument('--save-freq', default=100, type=int, metavar='N', help='save frequency')
 parser.add_argument('--gpuid', default='0', type=str)
+parser.add_argument('--resume', action='store_true')
 args = parser.parse_args()
 print(args)
 
@@ -160,7 +161,33 @@ def compute_bias_variance(net, testloader, trial):
 # set up index after random permutation
 permute_index = np.split(np.random.permutation(len(trainset)), args.trial)
 
-for trial in range(args.trial):
+op = Path(outdir)
+
+(op / 'ph').mkdir(exist_ok=True)
+
+first_epoch = 0
+first_trial = 0
+ckpt_path = None
+
+if args.resume:
+    import re
+    p = re.compile(r'model_width(\d+)_trial(\d+)_epoch(\d+).pkl')
+    
+    found = []
+    for ckpt in op.glob('model_width_*.pkl'):
+        res = p.search(ckpt.name)
+        if res:
+            width, trial, epoch = map(int, res.groups())
+            if width == args.width:
+                found.append((trial, epoch, ckpt))
+
+    found.sort()
+
+    first_trial = found[-1][0]
+    first_epoch = found[-1][1]
+    ckpt_path = found[-1][2]
+
+for trial in range(first_trial, args.trial):
     ##########################################
     # set up subsampled cifar10 train loader
     ##########################################
@@ -195,15 +222,21 @@ for trial in range(args.trial):
     if args.gpuid != "":
         net = net.cuda()
 
+    if args.resume:
+        net.load_state_dict(torch.load(ckpt_path))
+        net.eval()
+
+
     # optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=args.weight_decay)
     optimizer = optim.Adam(net.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     scheduler = StepLR(optimizer, step_size=args.lr_decay, gamma=0.1)
 
     with open(Path(outdir) / 'training_log.txt', 'w') as f:    
-        for epoch in range(1, args.num_epoch + 1):
+        for epoch in range(first_epoch + 1, args.num_epoch + 1):
             train_loss, train_acc = train(net, trainloader)
             test_loss, test_acc = test(net, testloader)
-            save_feature_space(net, testloader, Path(outdir) / f"feature_space_{epoch}.dat", cuda=(args.gpuid!=""))
+            save_feature_space(net, testloader, Path(outdir) / 'ph' 
+                / f"feature_space_{epoch}.dat", cuda=(args.gpuid!=""))
             line = 'epoch: {}, train_loss: {:.6f}, train acc: {}, test loss: {:.6f}, test acc: {}'.format(epoch, train_loss, train_acc, test_loss, test_acc)
             print(line)
             print(line, file=f, flush=True)
