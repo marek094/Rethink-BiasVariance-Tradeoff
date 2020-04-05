@@ -5,6 +5,7 @@ import torch.nn as nn
 import torchvision
 import torchvision.transforms as transforms
 import torch.optim as optim
+import time
 from torch.optim.lr_scheduler import StepLR
 from pathlib import Path
 
@@ -233,7 +234,7 @@ for trial in range(first_trial, args.trial):
     optimizer = optim.Adam(net.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     scheduler = StepLR(optimizer, step_size=args.lr_decay, gamma=0.1)
 
-    with open(Path(outdir) / 'training_log.txt', 'w') as f:    
+    with open(Path(outdir) / f'training_log{time.time()}.txt', 'w') as f:    
         for epoch in range(first_epoch + 1, args.num_epoch + 1):
             train_loss, train_acc = train(net, trainloader)
             test_loss, test_acc = test(net, testloader)
